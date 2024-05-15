@@ -14,4 +14,7 @@
     "editor.insertSpaces": false,
     "editor.detectIndentation": true,
     "editor.formatOnSave": false,
+    "editor.formatOnPaste": false,
+    "editor.formatOnType": false,
+    "editor.lineNumbers": "on",
 }

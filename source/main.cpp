@@ -17,7 +17,7 @@
 #include <iostream>
 
 [[nodiscard]]
-static fn read_file(const char *file_name) -> Array<char> {
+static fn read_file(const char* file_name) -> Array<char> {
   std::ifstream stream{file_name, std::ios::ate | std::ios::binary};
   assert(stream.is_open());
 
@@ -43,7 +43,7 @@ struct App {
 private:
   static constexpr u32 WIDTH = 800;
   static constexpr u32 HEIGHT = 600;
-  static constexpr const char *APPLICATION_NAME = "VulkanProject";
+  static constexpr const char* APPLICATION_NAME = "VulkanProject";
 
   struct QueueFamilies {
     [[nodiscard]]
@@ -55,11 +55,11 @@ private:
     Optional<u32> present_family;
   };
 
-  static constexpr const char *VALIDATION_LAYERS[]{
+  static constexpr const char* VALIDATION_LAYERS[]{
       "VK_LAYER_KHRONOS_validation",
   };
 
-  static constexpr const char *REQUIRED_DEVICE_EXTENSIONS[]{
+  static constexpr const char* REQUIRED_DEVICE_EXTENSIONS[]{
       VK_KHR_SWAPCHAIN_EXTENSION_NAME,
   };
 
@@ -83,29 +83,29 @@ private:
     };
 
     u32 glfw_extensions_count = 0;
-    const char **glfw_extensions =
+    const char** glfw_extensions =
         glfwGetRequiredInstanceExtensions(&glfw_extensions_count);
 
     // Enable applicable validation layers for debug builds.
     u32 enabled_layer_count;
-    const char **enabled_layers;
+    const char** enabled_layers;
 #if DEBUG_BUILD
     {
       u32 applicable_layers_count;
       vkEnumerateInstanceLayerProperties(&applicable_layers_count, nullptr);
 
-      auto *applicable_layers =
+      auto* applicable_layers =
           STACK_ALLOCATE_ZEROED(VkLayerProperties, applicable_layers_count);
       vkEnumerateInstanceLayerProperties(&applicable_layers_count,
                                          applicable_layers);
 
       enabled_layer_count = 0;
       enabled_layers =
-          STACK_ALLOCATE_UNINIT(const char *, applicable_layers_count);
+          STACK_ALLOCATE_UNINIT(const char*, applicable_layers_count);
 
       const Span<const VkLayerProperties> applicable_layers_span{
           applicable_layers, applicable_layers_count};
-      for (const char *validation_layer : VALIDATION_LAYERS) {
+      for (const char* validation_layer : VALIDATION_LAYERS) {
         const auto it = std::find_if(
             applicable_layers_span.begin(), applicable_layers_span.end(),
             [&](const VkLayerProperties &layer) {
@@ -163,7 +163,7 @@ private:
                                nullptr);
     assert(physical_device_count > 0);
 
-    auto *physical_devices =
+    auto* physical_devices =
         STACK_ALLOCATE_UNINIT(VkPhysicalDevice, physical_device_count);
     vkEnumeratePhysicalDevices(vulkan_instance, &physical_device_count,
                                physical_devices);
@@ -186,7 +186,7 @@ private:
       vkEnumerateDeviceExtensionProperties(physical_devices[i], nullptr,
                                            &extension_count, nullptr);
 
-      auto *available_extensions =
+      auto* available_extensions =
           STACK_ALLOCATE_UNINIT(VkExtensionProperties, extension_count);
       vkEnumerateDeviceExtensionProperties(
           physical_devices[i], nullptr, &extension_count, available_extensions);
@@ -288,8 +288,8 @@ private:
     assert(format_count > 0);
     assert(present_mode_count > 0);
 
-    auto *formats = STACK_ALLOCATE_UNINIT(VkSurfaceFormatKHR, format_count);
-    auto *present_modes =
+    auto* formats = STACK_ALLOCATE_UNINIT(VkSurfaceFormatKHR, format_count);
+    auto* present_modes =
         STACK_ALLOCATE_UNINIT(VkPresentModeKHR, present_mode_count);
     vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface,
                                          &format_count, formats);
@@ -445,7 +445,7 @@ private:
 
     assert(queue_family_count > 0);
 
-    auto *queue_family_props =
+    auto* queue_family_props =
         STACK_ALLOCATE_UNINIT(VkQueueFamilyProperties, queue_family_count);
     vkGetPhysicalDeviceQueueFamilyProperties(
         physical_device, &queue_family_count, queue_family_props);
@@ -671,7 +671,7 @@ private:
     const VkShaderModuleCreateInfo create_info{
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = data.size(),
-        .pCode = reinterpret_cast<const u32 *>(data.data()),
+        .pCode = reinterpret_cast<const u32*>(data.data()),
     };
 
     VkShaderModule shader_module;
@@ -926,7 +926,7 @@ private:
     assert(present_result == VK_SUCCESS);
   }
 
-  GLFWwindow *window = nullptr;
+  GLFWwindow* window = nullptr;
   VkInstance vulkan_instance = VK_NULL_HANDLE;
   VkSurfaceKHR surface = VK_NULL_HANDLE;
   VkPhysicalDevice physical_device = VK_NULL_HANDLE;
