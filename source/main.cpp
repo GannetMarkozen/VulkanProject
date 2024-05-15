@@ -68,8 +68,7 @@ private:
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-    window =
-        glfwCreateWindow(WIDTH, HEIGHT, APPLICATION_NAME, nullptr, nullptr);
+    window = glfwCreateWindow(WIDTH, HEIGHT, APPLICATION_NAME, nullptr, nullptr);
   }
 
   fn init_vulkan() -> void {
@@ -83,8 +82,7 @@ private:
     };
 
     u32 glfw_extensions_count = 0;
-    const char** glfw_extensions =
-        glfwGetRequiredInstanceExtensions(&glfw_extensions_count);
+    const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extensions_count);
 
     // Enable applicable validation layers for debug builds.
     u32 enabled_layer_count;
@@ -94,28 +92,22 @@ private:
       u32 applicable_layers_count;
       vkEnumerateInstanceLayerProperties(&applicable_layers_count, nullptr);
 
-      auto* applicable_layers =
-          STACK_ALLOCATE_ZEROED(VkLayerProperties, applicable_layers_count);
-      vkEnumerateInstanceLayerProperties(&applicable_layers_count,
-                                         applicable_layers);
+      auto* applicable_layers = STACK_ALLOCATE_ZEROED(VkLayerProperties, applicable_layers_count);
+      vkEnumerateInstanceLayerProperties(&applicable_layers_count, applicable_layers);
 
       enabled_layer_count = 0;
-      enabled_layers =
-          STACK_ALLOCATE_UNINIT(const char*, applicable_layers_count);
+      enabled_layers = STACK_ALLOCATE_UNINIT(const char*, applicable_layers_count);
 
       const Span<const VkLayerProperties> applicable_layers_span{
           applicable_layers, applicable_layers_count};
       for (const char* validation_layer : VALIDATION_LAYERS) {
-        const auto it = std::find_if(
-            applicable_layers_span.begin(), applicable_layers_span.end(),
-            [&](const VkLayerProperties &layer) {
-              return strcmp(layer.layerName, validation_layer) == 0;
-            });
+        const auto it = std::find_if(applicable_layers_span.begin(), applicable_layers_span.end(), [&](const VkLayerProperties &layer) {
+          return strcmp(layer.layerName, validation_layer) == 0;
+        });
 
         if (it != applicable_layers_span.end()) {
           enabled_layers[enabled_layer_count++] = validation_layer;
-          std::cout << "Enabling validation layer " << validation_layer
-                    << std::endl;
+          std::cout << "Enabling validation layer " << validation_layer << std::endl;
         }
       }
     }
@@ -133,8 +125,7 @@ private:
         .ppEnabledExtensionNames = glfw_extensions,
     };
 
-    const VkResult result =
-        vkCreateInstance(&create_info, nullptr, &vulkan_instance);
+    const VkResult result = vkCreateInstance(&create_info, nullptr, &vulkan_instance);
     assert(result == VK_SUCCESS);
 
     create_surface();
@@ -151,55 +142,41 @@ private:
   }
 
   fn create_surface() -> void {
-    const VkResult result =
-        glfwCreateWindowSurface(vulkan_instance, window, nullptr, &surface);
+    const VkResult result = glfwCreateWindowSurface(vulkan_instance, window, nullptr, &surface);
     assert(result == VK_SUCCESS);
   }
 
   fn pick_physical_device() -> void {
     // Pick a physical device.
     u32 physical_device_count = 0;
-    vkEnumeratePhysicalDevices(vulkan_instance, &physical_device_count,
-                               nullptr);
+    vkEnumeratePhysicalDevices(vulkan_instance, &physical_device_count, nullptr);
     assert(physical_device_count > 0);
 
-    auto* physical_devices =
-        STACK_ALLOCATE_UNINIT(VkPhysicalDevice, physical_device_count);
-    vkEnumeratePhysicalDevices(vulkan_instance, &physical_device_count,
-                               physical_devices);
+    auto* physical_devices = STACK_ALLOCATE_UNINIT(VkPhysicalDevice, physical_device_count);
+    vkEnumeratePhysicalDevices(vulkan_instance, &physical_device_count, physical_devices);
 
     for (u32 i = 0; i < physical_device_count; ++i) {
       VkPhysicalDeviceProperties physical_device_props;
-      vkGetPhysicalDeviceProperties(physical_devices[i],
-                                    &physical_device_props);
+      vkGetPhysicalDeviceProperties(physical_devices[i], &physical_device_props);
 
       VkPhysicalDeviceFeatures physical_device_features;
-      vkGetPhysicalDeviceFeatures(physical_devices[i],
-                                  &physical_device_features);
+      vkGetPhysicalDeviceFeatures(physical_devices[i], &physical_device_features);
 
       VkBool32 present_supported;
-      const VkResult result = vkGetPhysicalDeviceSurfaceSupportKHR(
-          physical_devices[i], i, surface, &present_supported);
+      const VkResult result = vkGetPhysicalDeviceSurfaceSupportKHR(physical_devices[i], i, surface, &present_supported);
       assert(result == VK_SUCCESS);
 
       u32 extension_count;
-      vkEnumerateDeviceExtensionProperties(physical_devices[i], nullptr,
-                                           &extension_count, nullptr);
+      vkEnumerateDeviceExtensionProperties(physical_devices[i], nullptr,&extension_count, nullptr);
 
-      auto* available_extensions =
-          STACK_ALLOCATE_UNINIT(VkExtensionProperties, extension_count);
-      vkEnumerateDeviceExtensionProperties(
-          physical_devices[i], nullptr, &extension_count, available_extensions);
+      auto* available_extensions = STACK_ALLOCATE_UNINIT(VkExtensionProperties, extension_count);
+      vkEnumerateDeviceExtensionProperties(physical_devices[i], nullptr, &extension_count, available_extensions);
 
       bool has_all_required_extensions = true;
       for (u32 j = 0; j < std::size(REQUIRED_DEVICE_EXTENSIONS); ++j) {
-        const bool has_required_extension =
-            std::find_if(
-                available_extensions, available_extensions + extension_count,
-                [&](const VkExtensionProperties &available_extension) {
-                  return strcmp(REQUIRED_DEVICE_EXTENSIONS[j],
-                                available_extension.extensionName) == 0;
-                }) != available_extensions + extension_count;
+        const bool has_required_extension = std::find_if(available_extensions, available_extensions + extension_count, [&](const VkExtensionProperties &available_extension) {
+          return strcmp(REQUIRED_DEVICE_EXTENSIONS[j], available_extension.extensionName) == 0;
+        }) != available_extensions + extension_count;
 
         if (!has_required_extension) {
           has_all_required_extensions = false;
@@ -208,28 +185,21 @@ private:
       }
 
       // Set physical device if found an applicable one.
-      if (has_all_required_extensions &&
-          physical_device_props.deviceType ==
-              VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
-          physical_device_features.multiViewport && present_supported) {
-
+      if (has_all_required_extensions && physical_device_props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU && physical_device_features.multiViewport && present_supported) {
         // Only attempt to check if the swap-chain is suitable after determining
         // that this physical device has all the required extensions.
         u32 present_mode_count;
-        vkGetPhysicalDeviceSurfacePresentModesKHR(physical_devices[i], surface,
-                                                  &present_mode_count, nullptr);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(physical_devices[i], surface, &present_mode_count, nullptr);
 
         u32 format_count;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(physical_devices[i], surface,
-                                             &format_count, nullptr);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physical_devices[i], surface, &format_count, nullptr);
 
         const bool is_swap_chain_suitable =
             present_mode_count != 0 && format_count != 0;
 
         if (is_swap_chain_suitable) {
           physical_device = physical_devices[i];
-          std::cout << "Selected physical device "
-                    << physical_device_props.deviceName << std::endl;
+          std::cout << "Selected physical device " << physical_device_props.deviceName << std::endl;
           break;
         }
       }
@@ -256,45 +226,35 @@ private:
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &queue_create_info,
-        .enabledExtensionCount =
-            static_cast<u32>(std::size(REQUIRED_DEVICE_EXTENSIONS)),
+        .enabledExtensionCount = static_cast<u32>(std::size(REQUIRED_DEVICE_EXTENSIONS)),
         .ppEnabledExtensionNames = REQUIRED_DEVICE_EXTENSIONS,
         .pEnabledFeatures = &device_features,
     };
 
-    const VkResult result =
-        vkCreateDevice(physical_device, &create_info, nullptr, &logical_device);
+    const VkResult result = vkCreateDevice(physical_device, &create_info, nullptr, &logical_device);
     assert(result == VK_SUCCESS);
 
-    vkGetDeviceQueue(logical_device, *queue_families.graphics_family, 0,
-                     &graphics_queue);
-    vkGetDeviceQueue(logical_device, *queue_families.present_family, 0,
-                     &present_queue);
+    vkGetDeviceQueue(logical_device, *queue_families.graphics_family, 0, &graphics_queue);
+    vkGetDeviceQueue(logical_device, *queue_families.present_family, 0, &present_queue);
     assert(graphics_queue != nullptr);
     assert(present_queue != nullptr);
   }
 
   fn create_swap_chain() -> void {
     VkSurfaceCapabilitiesKHR surface_capabilities;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface,
-                                              &surface_capabilities);
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface,&surface_capabilities);
 
     u32 format_count, present_mode_count;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface,
-                                         &format_count, nullptr);
-    vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface,
-                                              &present_mode_count, nullptr);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, nullptr);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, nullptr);
 
     assert(format_count > 0);
     assert(present_mode_count > 0);
 
     auto* formats = STACK_ALLOCATE_UNINIT(VkSurfaceFormatKHR, format_count);
-    auto* present_modes =
-        STACK_ALLOCATE_UNINIT(VkPresentModeKHR, present_mode_count);
-    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface,
-                                         &format_count, formats);
-    vkGetPhysicalDeviceSurfacePresentModesKHR(
-        physical_device, surface, &present_mode_count, present_modes);
+    auto* present_modes = STACK_ALLOCATE_UNINIT(VkPresentModeKHR, present_mode_count);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, formats);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, present_modes);
 
     const auto &format = [&]() -> const VkSurfaceFormatKHR & {
       for (u32 i = 0; i < format_count; ++i) {
@@ -306,16 +266,11 @@ private:
       return formats[0];
     }();
 
-    const auto present_mode =
-        std::find(present_modes, present_modes + present_mode_count,
-                  VK_PRESENT_MODE_MAILBOX_KHR) !=
-                present_modes + present_mode_count
-            ? VK_PRESENT_MODE_MAILBOX_KHR
-            : VK_PRESENT_MODE_FIFO_KHR;
+    const auto present_mode = std::find(present_modes, present_modes + present_mode_count,VK_PRESENT_MODE_MAILBOX_KHR) != present_modes + present_mode_count ?
+      VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR;
 
     const VkExtent2D swap_extent = [&] {
-      if (surface_capabilities.currentExtent.width !=
-          std::numeric_limits<u32>::max()) {
+      if (surface_capabilities.currentExtent.width !=std::numeric_limits<u32>::max()) {
         return surface_capabilities.currentExtent;
       }
 
@@ -327,12 +282,8 @@ private:
           .height = static_cast<u32>(height),
       };
 
-      out_extent.width = std::clamp(out_extent.width,
-                                    surface_capabilities.minImageExtent.width,
-                                    surface_capabilities.maxImageExtent.width);
-      out_extent.height = std::clamp(
-          out_extent.height, surface_capabilities.minImageExtent.height,
-          surface_capabilities.maxImageExtent.height);
+      out_extent.width = std::clamp(out_extent.width, surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width);
+      out_extent.height = std::clamp(out_extent.height, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height);
 
       return out_extent;
     }();
@@ -357,8 +308,7 @@ private:
 
     const QueueFamilies queue_families = find_queue_families();
     if (*queue_families.graphics_family != *queue_families.present_family) {
-      const u32 queue_family_indices[]{*queue_families.graphics_family,
-                                       *queue_families.present_family};
+      const u32 queue_family_indices[] { *queue_families.graphics_family,*queue_families.present_family };
       create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
       create_info.queueFamilyIndexCount = 2;
       create_info.pQueueFamilyIndices = queue_family_indices;
@@ -368,16 +318,14 @@ private:
       create_info.pQueueFamilyIndices = nullptr;
     }
 
-    const VkResult result =
-        vkCreateSwapchainKHR(logical_device, &create_info, nullptr, &swapchain);
+    const VkResult result = vkCreateSwapchainKHR(logical_device, &create_info, nullptr, &swapchain);
     assert(result == VK_SUCCESS);
 
     u32 image_count;
     vkGetSwapchainImagesKHR(logical_device, swapchain, &image_count, nullptr);
 
     swapchain_images.resize(image_count);
-    vkGetSwapchainImagesKHR(logical_device, swapchain, &image_count,
-                            swapchain_images.data());
+    vkGetSwapchainImagesKHR(logical_device, swapchain, &image_count, swapchain_images.data());
 
     // Store for use later.
     swapchain_image_format = format.format;
@@ -393,12 +341,10 @@ private:
       draw_frame();
 
       const auto end = std::chrono::high_resolution_clock::now();
-      const auto duration =
-          std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+      const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 
       // std::cout << "FPS[" << (1000000.0 / duration.count()) << std::endl;
-      fmt::println("FPS[{}] ms[{}]", 1000000.0 / duration.count(),
-                   static_cast<double>(duration.count()) * 1000);
+      fmt::println("FPS[{}] ms[{}]", 1000000.0 / duration.count(), static_cast<double>(duration.count()) * 1000);
     }
   }
 
@@ -440,15 +386,13 @@ private:
     QueueFamilies out_family;
 
     u32 queue_family_count;
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device,
-                                             &queue_family_count, nullptr);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
 
     assert(queue_family_count > 0);
 
     auto* queue_family_props =
         STACK_ALLOCATE_UNINIT(VkQueueFamilyProperties, queue_family_count);
-    vkGetPhysicalDeviceQueueFamilyProperties(
-        physical_device, &queue_family_count, queue_family_props);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_family_props);
 
     for (u32 i = 0; i < queue_family_count; ++i) {
       const auto &queue_family = queue_family_props[i];
@@ -459,8 +403,7 @@ private:
 
       if (!out_family.present_family.has_value()) {
         VkBool32 present_supported;
-        vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface,
-                                             &present_supported);
+        vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &present_supported);
         if (present_supported) {
           out_family.present_family = i;
         }
@@ -498,8 +441,7 @@ private:
           },
       };
 
-      const VkResult result = vkCreateImageView(
-          logical_device, &create_info, nullptr, &swapchain_image_views[i]);
+      const VkResult result = vkCreateImageView(logical_device, &create_info, nullptr, &swapchain_image_views[i]);
       assert(result == VK_SUCCESS);
     }
   }
@@ -635,8 +577,7 @@ private:
     };
 
     const VkResult pipeline_layout_create_result =
-        vkCreatePipelineLayout(logical_device, &pipeline_layout_create_info,
-                               nullptr, &pipeline_layout);
+        vkCreatePipelineLayout(logical_device, &pipeline_layout_create_info,nullptr, &pipeline_layout);
     assert(pipeline_layout_create_result == VK_SUCCESS);
 
     const VkGraphicsPipelineCreateInfo graphics_pipeline_create_info{
@@ -658,9 +599,7 @@ private:
         .basePipelineIndex = -1,
     };
 
-    const VkResult graphics_pipeline_create_result = vkCreateGraphicsPipelines(
-        logical_device, VK_NULL_HANDLE, 1, &graphics_pipeline_create_info,
-        nullptr, &graphics_pipeline);
+    const VkResult graphics_pipeline_create_result = vkCreateGraphicsPipelines(logical_device, VK_NULL_HANDLE, 1, &graphics_pipeline_create_info,nullptr, &graphics_pipeline);
     assert(graphics_pipeline_create_result == VK_SUCCESS);
 
     vkDestroyShaderModule(logical_device, vert_shader_module, nullptr);
@@ -675,8 +614,7 @@ private:
     };
 
     VkShaderModule shader_module;
-    const VkResult result = vkCreateShaderModule(logical_device, &create_info,
-                                                 nullptr, &shader_module);
+    const VkResult result = vkCreateShaderModule(logical_device, &create_info, nullptr, &shader_module);
     assert(result == VK_SUCCESS);
 
     return shader_module;
@@ -724,8 +662,7 @@ private:
         .pDependencies = &dependency,
     };
 
-    const VkResult render_pass_create_result = vkCreateRenderPass(
-        logical_device, &render_pass_create_info, nullptr, &render_pass);
+    const VkResult render_pass_create_result = vkCreateRenderPass(logical_device, &render_pass_create_info, nullptr, &render_pass);
     assert(render_pass_create_result == VK_SUCCESS);
   }
 
@@ -742,8 +679,7 @@ private:
           .layers = 1,
       };
 
-      const VkResult result = vkCreateFramebuffer(
-          logical_device, &create_info, nullptr, &swapchain_framebuffers[i]);
+      const VkResult result = vkCreateFramebuffer(logical_device, &create_info, nullptr, &swapchain_framebuffers[i]);
       assert(result == VK_SUCCESS);
     }
   }
@@ -757,8 +693,7 @@ private:
         .queueFamilyIndex = *queue_families.graphics_family,
     };
 
-    const VkResult result = vkCreateCommandPool(logical_device, &create_info,
-                                                nullptr, &command_pool);
+    const VkResult result = vkCreateCommandPool(logical_device, &create_info, nullptr, &command_pool);
     assert(result == VK_SUCCESS);
   }
 
@@ -770,8 +705,7 @@ private:
         .commandBufferCount = 1,
     };
 
-    const VkResult result =
-        vkAllocateCommandBuffers(logical_device, &create_info, &command_buffer);
+    const VkResult result = vkAllocateCommandBuffers(logical_device, &create_info, &command_buffer);
     assert(result == VK_SUCCESS);
   }
 
@@ -812,11 +746,9 @@ private:
 
     //~
     // Render pass.
-    vkCmdBeginRenderPass(out_command_buffer, &render_pass_begin_info,
-                         VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBeginRenderPass(out_command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdBindPipeline(out_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      graphics_pipeline);
+    vkCmdBindPipeline(out_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
 
     const VkViewport viewport{
         .x = 0.f,
@@ -849,12 +781,10 @@ private:
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
     };
 
-    VkResult result = vkCreateSemaphore(logical_device, &semaphore_create_info,
-                                        nullptr, &image_available_semaphore);
+    VkResult result = vkCreateSemaphore(logical_device, &semaphore_create_info, nullptr, &image_available_semaphore);
     assert(result == VK_SUCCESS);
 
-    result = vkCreateSemaphore(logical_device, &semaphore_create_info, nullptr,
-                               &render_finished_semaphore);
+    result = vkCreateSemaphore(logical_device, &semaphore_create_info, nullptr, &render_finished_semaphore);
     assert(result == VK_SUCCESS);
 
     const VkFenceCreateInfo fence_create_info{
@@ -862,35 +792,28 @@ private:
         .flags = VK_FENCE_CREATE_SIGNALED_BIT,
     };
 
-    result = vkCreateFence(logical_device, &fence_create_info, nullptr,
-                           &in_flight_fence);
+    result = vkCreateFence(logical_device, &fence_create_info, nullptr, &in_flight_fence);
     assert(result == VK_SUCCESS);
   }
 
   fn draw_frame() -> void {
-    const VkResult wait_for_in_flight_fence_result = vkWaitForFences(
-        logical_device, 1, &in_flight_fence, VK_TRUE, UINT64_MAX);
+    const VkResult wait_for_in_flight_fence_result = vkWaitForFences(logical_device, 1, &in_flight_fence, VK_TRUE, UINT64_MAX);
     assert(wait_for_in_flight_fence_result == VK_SUCCESS);
 
-    const VkResult reset_in_flight_fence_result =
-        vkResetFences(logical_device, 1, &in_flight_fence);
+    const VkResult reset_in_flight_fence_result = vkResetFences(logical_device, 1, &in_flight_fence);
     assert(reset_in_flight_fence_result == VK_SUCCESS);
 
     u32 image_index;
-    const VkResult acquire_next_image_index_result = vkAcquireNextImageKHR(
-        logical_device, swapchain, UINT64_MAX, image_available_semaphore,
-        VK_NULL_HANDLE, &image_index);
+    const VkResult acquire_next_image_index_result = vkAcquireNextImageKHR(logical_device, swapchain, UINT64_MAX, image_available_semaphore,VK_NULL_HANDLE, &image_index);
     assert(acquire_next_image_index_result == VK_SUCCESS);
 
-    const VkResult reset_command_buffer_result =
-        vkResetCommandBuffer(command_buffer, 0);
+    const VkResult reset_command_buffer_result = vkResetCommandBuffer(command_buffer, 0);
     assert(reset_command_buffer_result == VK_SUCCESS);
 
     record_command_buffer(command_buffer, image_index);
 
     // Submit command buffer.
-    const VkPipelineStageFlags wait_stages[]{
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    const VkPipelineStageFlags wait_stages[]{ VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
     const VkSubmitInfo submit_info{
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 
@@ -907,8 +830,7 @@ private:
         .pSignalSemaphores = &render_finished_semaphore,
     };
 
-    const VkResult queue_submit_result =
-        vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fence);
+    const VkResult queue_submit_result = vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fence);
     assert(queue_submit_result == VK_SUCCESS);
 
     const VkPresentInfoKHR present_info{
@@ -921,8 +843,7 @@ private:
         .pResults = nullptr,
     };
 
-    const VkResult present_result =
-        vkQueuePresentKHR(present_queue, &present_info);
+    const VkResult present_result = vkQueuePresentKHR(present_queue, &present_info);
     assert(present_result == VK_SUCCESS);
   }
 
