@@ -1,0 +1,17 @@
+{
+    "cmake.generator": "Ninja",
+    "cSpell.words": [
+        "Framebuffer",
+        "glfw",
+        "Multisample",
+        "subpass",
+        "Subpass",
+        "subresource",
+        "Swapchain",
+        "Swapchains"
+    ],
+    "editor.tabSize": 4,
+    "editor.insertSpaces": false,
+    "editor.detectIndentation": true,
+    "editor.formatOnSave": false,
+}
