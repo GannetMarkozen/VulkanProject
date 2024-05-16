@@ -19,6 +19,9 @@
 #include <glm/vec3.hpp>
 #include <glm/mat4x4.hpp>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -51,6 +54,7 @@ struct ViewMatrices {
 struct Vertex {
   glm::vec2 position;
   glm::vec3 color;
+  glm::vec2 tex_coord;
 
   [[nodiscard, clang::always_inline]]
   static constexpr fn get_binding_description() -> VkVertexInputBindingDescription {
@@ -62,7 +66,7 @@ struct Vertex {
   }
 
   [[nodiscard, clang::always_inline]]
-  static constexpr fn get_attribute_descriptions() -> StaticArray<VkVertexInputAttributeDescription, 2> {
+  static constexpr fn get_attribute_descriptions() -> StaticArray<VkVertexInputAttributeDescription, 3> {
     return {{
       VkVertexInputAttributeDescription{
         .location = 0,
@@ -70,11 +74,17 @@ struct Vertex {
         .format = VK_FORMAT_R32G32_SFLOAT,
         .offset = offsetof(Vertex, position),
       },
-      VkVertexInputAttributeDescription {
+      VkVertexInputAttributeDescription{
         .location = 1,
         .binding = 0,
         .format = VK_FORMAT_R32G32B32_SFLOAT,
         .offset = offsetof(Vertex, color),
+      },
+      VkVertexInputAttributeDescription{
+        .location = 2,
+        .binding = 0,
+        .format = VK_FORMAT_R32G32_SFLOAT,
+        .offset = offsetof(Vertex, tex_coord),
       },
     }};
   }
@@ -113,10 +123,10 @@ private:
   };
 
   static constexpr StaticArray<Vertex, 4> VERTICES{{
-    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}},
+    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
   }};
 
   static constexpr StaticArray<u16, 6> INDICES{{
@@ -160,7 +170,7 @@ private:
 
       const Span<const VkLayerProperties> applicable_layers_span{applicable_layers, applicable_layers_count};
       for (const char* validation_layer : VALIDATION_LAYERS) {
-        const auto it = std::find_if(applicable_layers_span.begin(), applicable_layers_span.end(), [&](const VkLayerProperties &layer) {
+        const auto it = std::find_if(applicable_layers_span.begin(), applicable_layers_span.end(), [&](const VkLayerProperties& layer) {
           return strcmp(layer.layerName, validation_layer) == 0;
         });
 
@@ -197,6 +207,9 @@ private:
     create_graphics_pipeline();
     create_framebuffers();
     create_command_pool();
+    create_texture_image();
+    create_texture_image_view();
+    create_texture_sampler();
     create_vertex_buffer();
     create_index_buffer();
     create_uniform_buffers();
@@ -284,7 +297,9 @@ private:
       .pQueuePriorities = queue_priorities,
     };
 
-    const VkPhysicalDeviceFeatures device_features{};
+    const VkPhysicalDeviceFeatures device_features{
+      .samplerAnisotropy = VK_TRUE,
+    };
 
     const VkDeviceCreateInfo create_info{
       .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -320,7 +335,7 @@ private:
     vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, formats);
     vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, present_modes);
 
-    const auto &format = [&]() -> const VkSurfaceFormatKHR& {
+    const auto& format = [&]() -> const VkSurfaceFormatKHR& {
       for (u32 i = 0; i < format_count; ++i) {
         if (formats[i].format == VK_FORMAT_B8G8R8_SRGB &&
             formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
@@ -407,7 +422,7 @@ private:
       const auto end = std::chrono::high_resolution_clock::now();
       const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 
-      fmt::println("FPS[{}] ms[{}]", 1000000.0 / duration.count(), static_cast<double>(duration.count()) / 1000);
+      //fmt::println("FPS[{}] ms[{}]", 1000000.0 / duration.count(), static_cast<double>(duration.count()) / 1000);
     }
   }
 
@@ -467,6 +482,11 @@ private:
     vkDestroyCommandPool(logical_device, command_pool, nullptr);
 
     cleanup_swapchain();
+
+    vkDestroySampler(logical_device, texture_sampler, nullptr);
+    vkDestroyImageView(logical_device, texture_image_view, nullptr);
+    vkDestroyImage(logical_device, texture_image, nullptr);
+    vkFreeMemory(logical_device, texture_image_memory, nullptr);
 
     vkDestroyDescriptorSetLayout(logical_device, descriptor_set_layout, nullptr);
 
@@ -551,6 +571,7 @@ private:
   }
 
   fn create_descriptor_set_layout() -> void {
+#if 0
     const VkDescriptorSetLayoutBinding descriptor_set_binding{
       .binding = 0,
       .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -563,6 +584,31 @@ private:
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
       .bindingCount = 1,
       .pBindings = &descriptor_set_binding,
+    };
+#endif
+
+    const VkDescriptorSetLayoutBinding descriptor_set_binding{
+      .binding = 0,
+      .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+      .descriptorCount = 1,
+      .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+      .pImmutableSamplers = nullptr,
+    };
+
+    const VkDescriptorSetLayoutBinding sampler_binding{
+      .binding = 1,
+      .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+      .descriptorCount = 1,
+      .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+      .pImmutableSamplers = nullptr,
+    };
+
+    const VkDescriptorSetLayoutBinding bindings[]{ descriptor_set_binding, sampler_binding };
+
+    const VkDescriptorSetLayoutCreateInfo create_info{
+      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+      .bindingCount = std::size(bindings),
+      .pBindings = bindings,
     };
 
     const VkResult result = vkCreateDescriptorSetLayout(logical_device, &create_info, nullptr, &descriptor_set_layout);
@@ -699,8 +745,7 @@ private:
       .pPushConstantRanges = nullptr,
     };
 
-    const VkResult pipeline_layout_create_result =
-        vkCreatePipelineLayout(logical_device, &pipeline_layout_create_info,nullptr, &pipeline_layout);
+    const VkResult pipeline_layout_create_result = vkCreatePipelineLayout(logical_device, &pipeline_layout_create_info,nullptr, &pipeline_layout);
     assert(pipeline_layout_create_result == VK_SUCCESS);
 
     const VkGraphicsPipelineCreateInfo graphics_pipeline_create_info{
@@ -907,6 +952,219 @@ private:
     assert(end_command_buffer_result == VK_SUCCESS);
   }
 
+  fn create_image(VkImage& out_image, VkDeviceMemory& out_image_memory, const u32 width, const u32 height, const VkFormat format, const VkImageTiling tiling, const VkImageUsageFlags usage, const VkMemoryPropertyFlags properties) const -> void {
+     const VkImageCreateInfo image_create_info{
+      .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+      .flags = 0,
+      .imageType = VK_IMAGE_TYPE_2D,
+      .format = format,
+      .extent{
+        .width = width,
+        .height = height,
+        .depth = 1,
+      },
+      .mipLevels = 1,
+      .arrayLayers = 1,
+      .samples = VK_SAMPLE_COUNT_1_BIT,
+      .tiling = tiling,
+      .usage = usage,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+      .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    const VkResult create_image_result = vkCreateImage(logical_device, &image_create_info, nullptr, &out_image);
+    assert(create_image_result == VK_SUCCESS);
+
+    VkMemoryRequirements memory_requirements;
+    vkGetImageMemoryRequirements(logical_device, out_image, &memory_requirements);
+
+    const VkMemoryAllocateInfo image_alloc_info{
+      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+      .allocationSize = memory_requirements.size,
+      .memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, properties),
+    };
+
+    const VkResult alloc_memory_result = vkAllocateMemory(logical_device, &image_alloc_info, nullptr, &out_image_memory);
+    assert(alloc_memory_result == VK_SUCCESS);
+
+    vkBindImageMemory(logical_device, out_image, out_image_memory, 0);
+  }
+
+  fn execute_one_time_commands(auto&& functor) const -> void {
+    assert(command_pool != VK_NULL_HANDLE);
+
+    const VkCommandBufferAllocateInfo alloc_info{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .commandPool = command_pool,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandBufferCount = 1,
+    };
+
+    VkCommandBuffer command_buffer;
+    vkAllocateCommandBuffers(logical_device, &alloc_info, &command_buffer);
+
+    const VkCommandBufferBeginInfo begin_info{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+
+    vkBeginCommandBuffer(command_buffer, &begin_info);
+
+    functor(command_buffer);
+
+    vkEndCommandBuffer(command_buffer);
+
+    const VkSubmitInfo submit_info{
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .commandBufferCount = 1,
+      .pCommandBuffers = &command_buffer,
+    };
+
+    vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
+    vkQueueWaitIdle(graphics_queue);
+
+    vkFreeCommandBuffers(logical_device, command_pool, 1, &command_buffer);
+  }
+
+  fn copy_buffer_to_image(const VkBuffer buffer, const VkImage image, const u32 width, const u32 height) const -> void {
+    execute_one_time_commands([&](const VkCommandBuffer command_buffer) {
+      const VkBufferImageCopy region{
+        .bufferOffset = 0,
+        .bufferRowLength = 0,
+        .bufferImageHeight = 0,
+        .imageSubresource{
+          .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+          .mipLevel = 0,
+          .baseArrayLayer = 0,
+          .layerCount = 1,
+        },
+        .imageOffset{0, 0, 0},
+        .imageExtent{
+          .width = width,
+          .height = height,
+          .depth = 1,
+        },
+      };
+      vkCmdCopyBufferToImage(command_buffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    });
+  }
+
+  fn transition_image_layout(const VkImage image, const VkFormat format, const VkImageLayout old_layout, const VkImageLayout new_layout) const -> void {
+    execute_one_time_commands([&](const VkCommandBuffer command_buffer) {
+      VkAccessFlags src_access_mask, dst_access_mask;
+      VkPipelineStageFlags src_stage, dst_stage;
+      if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        src_access_mask = 0;
+        dst_access_mask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+        src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        dst_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+      } else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        src_access_mask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        dst_access_mask = VK_ACCESS_SHADER_READ_BIT;
+
+        src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+      } else {
+        assert(false);
+      }
+
+      const VkImageMemoryBarrier barrier{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask = src_access_mask,
+        .dstAccessMask = dst_access_mask,
+        .oldLayout = old_layout,
+        .newLayout = new_layout,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = image,
+        .subresourceRange{
+          .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+          .baseMipLevel = 0,
+          .levelCount = 1,
+          .baseArrayLayer = 0,
+          .layerCount = 1,
+        },
+      };
+      vkCmdPipelineBarrier(command_buffer, src_stage, dst_stage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+    });
+  }
+
+  fn create_texture_image() -> void {
+    i32 texture_width, texture_height, texture_channels;
+    stbi_uc* pixels = stbi_load("textures/texture.jpg", &texture_width, &texture_height, &texture_channels, STBI_rgb_alpha);
+    assert(!!pixels);
+
+    const VkDeviceSize image_size = texture_width * texture_height * 4;
+
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_buffer_memory;
+    create_buffer(image_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
+
+    void* data;
+    vkMapMemory(logical_device, staging_buffer_memory, 0, image_size, 0, &data);
+
+    memcpy(data, pixels, image_size);
+
+    vkUnmapMemory(logical_device, staging_buffer_memory);
+
+    stbi_image_free(pixels);
+
+    create_image(texture_image, texture_image_memory, static_cast<u32>(texture_width), static_cast<u32>(texture_height), VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    transition_image_layout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    copy_buffer_to_image(staging_buffer, texture_image, static_cast<u32>(texture_width), static_cast<u32>(texture_height));
+
+    transition_image_layout(texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    vkDestroyBuffer(logical_device, staging_buffer, nullptr);
+    vkFreeMemory(logical_device, staging_buffer_memory, nullptr);
+  }
+
+  fn create_texture_image_view() -> void {
+    const VkImageViewCreateInfo view_create_info{
+      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+      .image = texture_image,
+      .viewType = VK_IMAGE_VIEW_TYPE_2D,
+      .format = VK_FORMAT_R8G8B8A8_SRGB,
+      .subresourceRange{
+        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .baseMipLevel = 0,
+        .levelCount = 1,
+        .baseArrayLayer = 0,
+        .layerCount = 1,
+      },
+    };
+    vkCreateImageView(logical_device, &view_create_info, nullptr, &texture_image_view);
+  }
+
+  fn create_texture_sampler() -> void {
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(physical_device, &props);
+
+    const VkSamplerCreateInfo sampler_create_info{
+      .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+      .magFilter = VK_FILTER_LINEAR,
+      .minFilter = VK_FILTER_LINEAR,
+      .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+      .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+      .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+      .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+      .mipLodBias = 0.f,
+      .anisotropyEnable = VK_TRUE,
+      .maxAnisotropy = props.limits.maxSamplerAnisotropy,
+      .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+      .unnormalizedCoordinates = VK_FALSE,
+      .compareEnable = VK_FALSE,
+      .compareOp = VK_COMPARE_OP_ALWAYS,
+      .minLod = 0.f,
+      .maxLod = 0.f,
+    };
+
+    vkCreateSampler(logical_device, &sampler_create_info, nullptr, &texture_sampler);
+  }
+
   fn create_vertex_buffer() -> void {
     constexpr VkDeviceSize BUFFER_SIZE = sizeof(Vertex) * VERTICES.size();
     constexpr VkMemoryPropertyFlags MEMORY_REQUIREMENTS = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -966,16 +1224,29 @@ private:
   }
 
   fn create_descriptor_pool() -> void {
+#if 0
     const VkDescriptorPoolSize pool_size{
       .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
       .descriptorCount = MAX_FRAMES_IN_FLIGHT,
+    };
+#endif
+
+    const VkDescriptorPoolSize pool_sizes[]{
+      VkDescriptorPoolSize{
+        .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = MAX_FRAMES_IN_FLIGHT,
+      },
+      VkDescriptorPoolSize{
+        .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = MAX_FRAMES_IN_FLIGHT,
+      },
     };
 
     const VkDescriptorPoolCreateInfo pool_create_info{
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
       .maxSets = MAX_FRAMES_IN_FLIGHT,
       .poolSizeCount = 1,
-      .pPoolSizes = &pool_size,
+      .pPoolSizes = pool_sizes,
     };
 
     const VkResult result = vkCreateDescriptorPool(logical_device, &pool_create_info, nullptr, &descriptor_pool);
@@ -1005,6 +1276,40 @@ private:
         .range = sizeof(ViewMatrices),
       };
 
+      const VkDescriptorImageInfo image_info{
+        .sampler = texture_sampler,
+        .imageView = texture_image_view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+      };
+
+      const VkWriteDescriptorSet descriptor_writes[]{
+        VkWriteDescriptorSet{
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .dstSet = descriptor_sets[i],
+          .dstBinding = 0,
+          .dstArrayElement = 0,
+          .descriptorCount = 1,
+          .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+          .pImageInfo = nullptr,
+          .pBufferInfo = &buffer_info,
+          .pTexelBufferView = nullptr,
+        },
+        VkWriteDescriptorSet{
+          .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+          .dstSet = descriptor_sets[i],
+          .dstBinding = 1,
+          .dstArrayElement = 0,
+          .descriptorCount = 1,
+          .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+          .pImageInfo = &image_info,
+          .pBufferInfo = nullptr,
+          .pTexelBufferView = nullptr,
+        },
+      };
+
+      vkUpdateDescriptorSets(logical_device, static_cast<u32>(std::size(descriptor_writes)), descriptor_writes, 0, nullptr);
+
+#if 0
       const VkWriteDescriptorSet descriptor_write{
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .dstSet = descriptor_sets[i],
@@ -1018,6 +1323,7 @@ private:
       };
 
       vkUpdateDescriptorSets(logical_device, 1, &descriptor_write, 0, nullptr);
+#endif
     }
   }
 
@@ -1056,42 +1362,14 @@ private:
   }
 
   fn copy_buffer(const VkBuffer dst, const VkBuffer src, const VkDeviceSize size) const -> void {
-    assert(command_pool != VK_NULL_HANDLE);
-
-    const VkCommandBufferAllocateInfo command_buffer_allocate_info{
-      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-      .commandPool = command_pool,
-      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-      .commandBufferCount = 1,
-    };
-
-    VkCommandBuffer command_buffer;
-    vkAllocateCommandBuffers(logical_device, &command_buffer_allocate_info, &command_buffer);
-
-    const VkCommandBufferBeginInfo begin_info{
-      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-      .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-    };
-    vkBeginCommandBuffer(command_buffer, &begin_info);// Begin recording.
-
-    const VkBufferCopy copy_region{
-      .srcOffset = 0,
-      .dstOffset = 0,
-      .size = size,
-    };
-    vkCmdCopyBuffer(command_buffer, src, dst, 1, &copy_region);
-
-    vkEndCommandBuffer(command_buffer);
-
-    const VkSubmitInfo submit_info{
-      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-      .commandBufferCount = 1,
-      .pCommandBuffers = &command_buffer,
-    };
-    vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
-    vkQueueWaitIdle(graphics_queue);
-
-    vkFreeCommandBuffers(logical_device, command_pool, 1, &command_buffer);
+    execute_one_time_commands([&](const VkCommandBuffer command_buffer) {
+      const VkBufferCopy copy_region{
+        .srcOffset = 0,
+        .dstOffset = 0,
+        .size = size,
+      };
+      vkCmdCopyBuffer(command_buffer, src, dst, 1, &copy_region);
+    });
   }
 
   fn create_sync_objects() -> void {
@@ -1271,6 +1549,11 @@ private:
 
   VkBuffer index_buffer = VK_NULL_HANDLE;
   VkDeviceMemory index_buffer_memory = VK_NULL_HANDLE;
+
+  VkImage texture_image = VK_NULL_HANDLE;
+  VkDeviceMemory texture_image_memory = VK_NULL_HANDLE;
+  VkImageView texture_image_view = VK_NULL_HANDLE;
+  VkSampler texture_sampler = VK_NULL_HANDLE;
 
   VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
   StaticArray<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> descriptor_sets;

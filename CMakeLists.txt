@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5.0)
+cmake_minimum_required(VERSION 3.28.5)
 project(VulkanProject VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
@@ -27,6 +27,12 @@ FetchContent_Declare(
 )
 
 FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG master
+)
+
+FetchContent_Declare(
     VulkanHeaders
     GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
     GIT_TAG v1.3.266
@@ -35,6 +41,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(fmt)
 FetchContent_MakeAvailable(glm)
 FetchContent_MakeAvailable(glfw)
+FetchContent_MakeAvailable(stb)
 FetchContent_MakeAvailable(VulkanHeaders)
 
 if (NOT DEFINED ENV{VULKAN_SDK})
@@ -62,6 +69,8 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
 else()
     message(FATAL_ERROR "Unknown compiler. SSE4 not enabled!")
 endif()
+
+target_include_directories(VulkanProject PRIVATE ${stb_SOURCE_DIR})
 
 # Link Vulkan
 target_include_directories(VulkanProject PRIVATE "${VulkanHeaders_SOURCE_DIR}/include")

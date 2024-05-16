@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <variant>
+#include <tuple>
 
 template<typename T, typename Allocator = std::allocator<T>>
 using Array = std::vector<T, Allocator>;
@@ -27,3 +28,6 @@ using Optional = std::optional<T>;
 
 template<typename... Ts>
 using Variant = std::variant<Ts...>;
+
+template<typename... Ts>
+using Tuple = std::tuple<Ts...>;
