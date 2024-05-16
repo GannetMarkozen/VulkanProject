@@ -101,11 +101,16 @@ private:
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
   };
 
-  static constexpr StaticArray<Vertex, 3> vertices{{
-      {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-      {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-      {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    }};
+  static constexpr StaticArray<Vertex, 4> VERTICES{{
+    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}},
+  }};
+
+  static constexpr StaticArray<u16, 6> INDICES{{
+    0, 1, 2, 2, 3, 0,
+  }};
 
   fn init_window() -> void {
     glfwInit();
@@ -179,8 +184,9 @@ private:
     create_render_pass();
     create_graphics_pipeline();
     create_framebuffers();
-    create_vertex_buffer();
     create_command_pool();
+    create_vertex_buffer();
+    create_index_buffer();
     create_command_buffers();
     create_sync_objects();
   }
@@ -821,11 +827,6 @@ private:
 
     vkCmdBindPipeline(out_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
 
-    const VkDeviceSize offsets[]{ 0 };
-    vkCmdBindVertexBuffers(out_command_buffer, 0, 1, &vertex_buffer, offsets);
-
-    vkCmdDraw(out_command_buffer, static_cast<u32>(vertices.size()), 1, 0, 0);
-
     const VkViewport viewport{
       .x = 0.f,
       .y = 0.f,
@@ -842,6 +843,14 @@ private:
     };
     vkCmdSetScissor(out_command_buffer, 0, 1, &scissor);
 
+    const VkDeviceSize offsets[]{ 0 };
+    vkCmdBindVertexBuffers(out_command_buffer, 0, 1, &vertex_buffer, offsets);
+
+    vkCmdBindIndexBuffer(out_command_buffer, index_buffer, offsets[0], VK_INDEX_TYPE_UINT16);
+
+    //vkCmdDraw(out_command_buffer, static_cast<u32>(VERTICES.size()), 1, 0, 0);
+    vkCmdDrawIndexed(out_command_buffer, static_cast<u32>(INDICES.size()), 1, 0, 0, 0);
+
     vkCmdDraw(out_command_buffer, 3, 1, 0, 0);
 
     vkCmdEndRenderPass(out_command_buffer);
@@ -852,52 +861,71 @@ private:
   }
 
   fn create_vertex_buffer() -> void {
-    const VkBufferCreateInfo buffer_create_info{
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .size = sizeof(Vertex) * vertices.size(),
-      .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-    };
+    constexpr VkDeviceSize BUFFER_SIZE = sizeof(Vertex) * VERTICES.size();
+    constexpr VkMemoryPropertyFlags MEMORY_REQUIREMENTS = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-    VkResult result = vkCreateBuffer(logical_device, &buffer_create_info, nullptr, &vertex_buffer);
-    assert(result == VK_SUCCESS);
+    create_buffer_from_data(vertex_buffer, vertex_buffer_memory, Span<const char>{reinterpret_cast<const char*>(VERTICES.data()), BUFFER_SIZE}, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    VkPhysicalDeviceMemoryProperties memory_properties;
-    vkGetPhysicalDeviceMemoryProperties(physical_device, &memory_properties);
 
-    VkMemoryRequirements memory_requirements;
-    vkGetBufferMemoryRequirements(logical_device, vertex_buffer, &memory_requirements);
 
-    constexpr VkMemoryPropertyFlags REQUIRED_PROPERTIES = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-    u32 memory_type = UINT32_MAX;
-    for (u32 i = 0; i < memory_properties.memoryTypeCount; ++i) {
-      if ((memory_properties.memoryTypes[i].propertyFlags & REQUIRED_PROPERTIES) == REQUIRED_PROPERTIES) {
-        memory_type = i;
-        break;
-      }
-    }
-    assert(memory_type != UINT32_MAX);
-
-    const VkMemoryAllocateInfo allocate_info{
-      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .allocationSize = memory_requirements.size,
-      .memoryTypeIndex = memory_type,
-    };
-
-    result = vkAllocateMemory(logical_device, &allocate_info, nullptr, &vertex_buffer_memory);
-    assert(result == VK_SUCCESS);
-
-    result = vkBindBufferMemory(logical_device, vertex_buffer, vertex_buffer_memory, 0);
-    assert(result == VK_SUCCESS);
+#if 0
+#if 01
+    // Staging buffer allocation.
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_buffer_memory;
+    create_buffer(BUFFER_SIZE, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
 
     void* data;
-    result = vkMapMemory(logical_device, vertex_buffer_memory, 0, buffer_create_info.size, 0, &data);
-    assert(result == VK_SUCCESS);
+    vkMapMemory(logical_device, staging_buffer_memory, 0, BUFFER_SIZE, 0, &data);
 
-    memcpy(data, vertices.data(), static_cast<usize>(buffer_create_info.size));
+    memcpy(data, VERTICES.data(), BUFFER_SIZE);
+
+    vkUnmapMemory(logical_device, staging_buffer_memory);
+
+    create_buffer(BUFFER_SIZE, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertex_buffer, vertex_buffer_memory);
+
+    copy_buffer(vertex_buffer, staging_buffer, BUFFER_SIZE);
+
+    vkDestroyBuffer(logical_device, staging_buffer, nullptr);
+    vkFreeMemory(logical_device, staging_buffer_memory, nullptr);
+
+#else
+    create_buffer(BUFFER_SIZE, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, MEMORY_REQUIREMENTS, vertex_buffer, vertex_buffer_memory);
+
+    void* data;
+    vkMapMemory(logical_device, vertex_buffer_memory, 0, BUFFER_SIZE, 0, &data);
+
+    memcpy(data, vertices.data(), static_cast<usize>(BUFFER_SIZE));
 
     vkUnmapMemory(logical_device, vertex_buffer_memory);
+#endif
+#endif
+  }
+
+  fn create_index_buffer() -> void {
+    constexpr VkDeviceSize BUFFER_SIZE = INDICES.size() * sizeof(u16);
+
+    create_buffer_from_data(index_buffer, index_buffer_memory, Span<const char>{reinterpret_cast<const char*>(INDICES.data()), BUFFER_SIZE}, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+  }
+
+  fn create_buffer_from_data(VkBuffer& out_buffer, VkDeviceMemory& out_buffer_memory, const Span<const char> src_data, const VkBufferUsageFlags usage, const VkMemoryPropertyFlags properties) const -> void {
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_buffer_memory;
+    create_buffer(static_cast<VkDeviceSize>(src_data.size()), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
+
+    void* data;
+    vkMapMemory(logical_device, staging_buffer_memory, 0, static_cast<VkDeviceSize>(src_data.size()), 0, &data);
+
+    memcpy(data, src_data.data(), src_data.size());
+
+    vkUnmapMemory(logical_device, staging_buffer_memory);
+
+    create_buffer(src_data.size(), usage, properties, out_buffer, out_buffer_memory);
+
+    copy_buffer(out_buffer, staging_buffer, static_cast<VkDeviceSize>(src_data.size()));
+
+    vkDestroyBuffer(logical_device, staging_buffer, nullptr);
+    vkFreeMemory(logical_device, staging_buffer_memory, nullptr);
   }
 
   fn find_memory_type(const u32 filter_type, const VkMemoryPropertyFlags properties) const -> u32 {
@@ -912,6 +940,45 @@ private:
 
     assert(false);
     return UINT32_MAX;
+  }
+
+  fn copy_buffer(const VkBuffer dst, const VkBuffer src, const VkDeviceSize size) const -> void {
+    assert(command_pool != VK_NULL_HANDLE);
+
+    const VkCommandBufferAllocateInfo command_buffer_allocate_info{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .commandPool = command_pool,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandBufferCount = 1,
+    };
+
+    VkCommandBuffer command_buffer;
+    vkAllocateCommandBuffers(logical_device, &command_buffer_allocate_info, &command_buffer);
+
+    const VkCommandBufferBeginInfo begin_info{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    vkBeginCommandBuffer(command_buffer, &begin_info);// Begin recording.
+
+    const VkBufferCopy copy_region{
+      .srcOffset = 0,
+      .dstOffset = 0,
+      .size = size,
+    };
+    vkCmdCopyBuffer(command_buffer, src, dst, 1, &copy_region);
+
+    vkEndCommandBuffer(command_buffer);
+
+    const VkSubmitInfo submit_info{
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .commandBufferCount = 1,
+      .pCommandBuffers = &command_buffer,
+    };
+    vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
+    vkQueueWaitIdle(graphics_queue);
+
+    vkFreeCommandBuffers(logical_device, command_pool, 1, &command_buffer);
   }
 
   fn create_sync_objects() -> void {
@@ -934,6 +1001,44 @@ private:
       result = vkCreateFence(logical_device, &fence_create_info, nullptr, &in_flight_fences[i]);
       assert(result == VK_SUCCESS);
     }
+  }
+
+  fn create_buffer(const VkDeviceSize size, const VkBufferUsageFlags usage, const VkMemoryPropertyFlags properties, VkBuffer& out_buffer, VkDeviceMemory& out_buffer_memory) const -> void {
+    const VkBufferCreateInfo buffer_create_info{
+      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+      .size = size,
+      .usage = usage,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+
+    VkResult result = vkCreateBuffer(logical_device, &buffer_create_info, nullptr, &out_buffer);
+    assert(result == VK_SUCCESS);
+
+    VkMemoryRequirements memory_requirements;
+    vkGetBufferMemoryRequirements(logical_device, out_buffer, &memory_requirements);
+
+    VkPhysicalDeviceMemoryProperties memory_properties;
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &memory_properties);
+
+    u32 memory_type = UINT32_MAX;
+    for (u32 i = 0; i < memory_properties.memoryTypeCount; ++i) {
+      if ((memory_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+        memory_type = i;
+        break;
+      }
+    }
+    assert(memory_type != UINT32_MAX);
+
+    const VkMemoryAllocateInfo alloc_create_info{
+      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+      .allocationSize = memory_requirements.size,
+      .memoryTypeIndex = memory_type,
+    };
+
+    result = vkAllocateMemory(logical_device, &alloc_create_info, nullptr, &out_buffer_memory);
+    assert(result == VK_SUCCESS);
+
+    vkBindBufferMemory(logical_device, out_buffer, out_buffer_memory, 0);
   }
 
   fn draw_frame() -> void {
@@ -1031,6 +1136,9 @@ private:
 
   VkBuffer vertex_buffer = VK_NULL_HANDLE;
   VkDeviceMemory vertex_buffer_memory = VK_NULL_HANDLE;
+
+  VkBuffer index_buffer = VK_NULL_HANDLE;
+  VkDeviceMemory index_buffer_memory = VK_NULL_HANDLE;
 
   StaticArray<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> command_buffers;
   StaticArray<VkSemaphore, MAX_FRAMES_IN_FLIGHT> image_available_semaphores;
