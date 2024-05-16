@@ -11,6 +11,9 @@
 #define FMT_EXCEPTIONS 0// Disable exceptions from fmt.
 #include <fmt/printf.h>
 
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
+
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -33,6 +36,38 @@ static fn read_file(const char* file_name) -> Array<char> {
 
   return out_data;
 }
+
+struct Vertex {
+  glm::vec2 position;
+  glm::vec3 color;
+
+  [[nodiscard, clang::always_inline]]
+  static constexpr fn get_binding_description() -> VkVertexInputBindingDescription {
+    return {
+      .binding = 0,
+      .stride = sizeof(Vertex),
+      .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+    };
+  }
+
+  [[nodiscard, clang::always_inline]]
+  static constexpr fn get_attribute_descriptions() -> StaticArray<VkVertexInputAttributeDescription, 2> {
+    return {{
+      VkVertexInputAttributeDescription{
+        .location = 0,
+        .binding = 0,
+        .format = VK_FORMAT_R32G32_SFLOAT,
+        .offset = offsetof(Vertex, position),
+      },
+      VkVertexInputAttributeDescription {
+        .location = 1,
+        .binding = 0,
+        .format = VK_FORMAT_R32G32B32_SFLOAT,
+        .offset = offsetof(Vertex, color),
+      },
+    }};
+  }
+};
 
 struct App {
   fn run() -> void {
@@ -65,6 +100,12 @@ private:
   static constexpr const char* REQUIRED_DEVICE_EXTENSIONS[]{
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
   };
+
+  static constexpr StaticArray<Vertex, 3> vertices{{
+      {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+      {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+      {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+    }};
 
   fn init_window() -> void {
     glfwInit();
@@ -138,6 +179,7 @@ private:
     create_render_pass();
     create_graphics_pipeline();
     create_framebuffers();
+    create_vertex_buffer();
     create_command_pool();
     create_command_buffers();
     create_sync_objects();
@@ -397,6 +439,9 @@ private:
 
     cleanup_swapchain();
 
+    vkDestroyBuffer(logical_device, vertex_buffer, nullptr);
+    vkFreeMemory(logical_device, vertex_buffer_memory, nullptr);
+
     vkDestroyPipeline(logical_device, graphics_pipeline, nullptr);
     vkDestroyPipelineLayout(logical_device, pipeline_layout, nullptr);
     vkDestroyRenderPass(logical_device, render_pass, nullptr);
@@ -507,12 +552,15 @@ private:
       .pDynamicStates = dynamic_states,
     };
 
+    constexpr auto vertex_binding_description = Vertex::get_binding_description();
+    constexpr auto vertex_attribute_descriptions = Vertex::get_attribute_descriptions();
+
     const VkPipelineVertexInputStateCreateInfo vertex_input_create_info{
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-      .vertexBindingDescriptionCount = 0,
-      .pVertexBindingDescriptions = nullptr,
-      .vertexAttributeDescriptionCount = 0,
-      .pVertexAttributeDescriptions = nullptr,
+      .vertexBindingDescriptionCount = 1,
+      .pVertexBindingDescriptions = &vertex_binding_description,
+      .vertexAttributeDescriptionCount = static_cast<u32>(vertex_attribute_descriptions.size()),
+      .pVertexAttributeDescriptions = vertex_attribute_descriptions.data(),
     };
 
     const VkPipelineInputAssemblyStateCreateInfo input_assembly_create_info{
@@ -773,6 +821,11 @@ private:
 
     vkCmdBindPipeline(out_command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
 
+    const VkDeviceSize offsets[]{ 0 };
+    vkCmdBindVertexBuffers(out_command_buffer, 0, 1, &vertex_buffer, offsets);
+
+    vkCmdDraw(out_command_buffer, static_cast<u32>(vertices.size()), 1, 0, 0);
+
     const VkViewport viewport{
       .x = 0.f,
       .y = 0.f,
@@ -796,6 +849,69 @@ private:
 
     const VkResult end_command_buffer_result = vkEndCommandBuffer(out_command_buffer);
     assert(end_command_buffer_result == VK_SUCCESS);
+  }
+
+  fn create_vertex_buffer() -> void {
+    const VkBufferCreateInfo buffer_create_info{
+      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+      .size = sizeof(Vertex) * vertices.size(),
+      .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+
+    VkResult result = vkCreateBuffer(logical_device, &buffer_create_info, nullptr, &vertex_buffer);
+    assert(result == VK_SUCCESS);
+
+    VkPhysicalDeviceMemoryProperties memory_properties;
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &memory_properties);
+
+    VkMemoryRequirements memory_requirements;
+    vkGetBufferMemoryRequirements(logical_device, vertex_buffer, &memory_requirements);
+
+    constexpr VkMemoryPropertyFlags REQUIRED_PROPERTIES = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+    u32 memory_type = UINT32_MAX;
+    for (u32 i = 0; i < memory_properties.memoryTypeCount; ++i) {
+      if ((memory_properties.memoryTypes[i].propertyFlags & REQUIRED_PROPERTIES) == REQUIRED_PROPERTIES) {
+        memory_type = i;
+        break;
+      }
+    }
+    assert(memory_type != UINT32_MAX);
+
+    const VkMemoryAllocateInfo allocate_info{
+      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+      .allocationSize = memory_requirements.size,
+      .memoryTypeIndex = memory_type,
+    };
+
+    result = vkAllocateMemory(logical_device, &allocate_info, nullptr, &vertex_buffer_memory);
+    assert(result == VK_SUCCESS);
+
+    result = vkBindBufferMemory(logical_device, vertex_buffer, vertex_buffer_memory, 0);
+    assert(result == VK_SUCCESS);
+
+    void* data;
+    result = vkMapMemory(logical_device, vertex_buffer_memory, 0, buffer_create_info.size, 0, &data);
+    assert(result == VK_SUCCESS);
+
+    memcpy(data, vertices.data(), static_cast<usize>(buffer_create_info.size));
+
+    vkUnmapMemory(logical_device, vertex_buffer_memory);
+  }
+
+  fn find_memory_type(const u32 filter_type, const VkMemoryPropertyFlags properties) const -> u32 {
+    VkPhysicalDeviceMemoryProperties mem_props;
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_props);
+
+    for (u32 i = 0; i < mem_props.memoryTypeCount; ++i) {
+      if ((filter_type & 1 << i) && (mem_props.memoryTypes[i].propertyFlags & properties) == properties) {
+        return i;
+      }
+    }
+
+    assert(false);
+    return UINT32_MAX;
   }
 
   fn create_sync_objects() -> void {
@@ -912,6 +1028,9 @@ private:
   Array<VkFramebuffer> swapchain_framebuffers;
 
   VkCommandPool command_pool = VK_NULL_HANDLE;
+
+  VkBuffer vertex_buffer = VK_NULL_HANDLE;
+  VkDeviceMemory vertex_buffer_memory = VK_NULL_HANDLE;
 
   StaticArray<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> command_buffers;
   StaticArray<VkSemaphore, MAX_FRAMES_IN_FLIGHT> image_available_semaphores;
